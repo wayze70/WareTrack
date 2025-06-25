@@ -1,0 +1,54 @@
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string"
+                          Label="Název skladu"
+                          @bind-Value="_warehouse.Name"
+                          Required="true"
+                          RequiredError="Název skladu je povinný"/>
+
+            <MudTextField T="string"
+                          Label="Popis"
+                          @bind-Value="_warehouse.Description"
+                          AutoGrow="true"/>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Vytvořit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    private MudForm? _form;
+    private readonly WarehouseDto _warehouse = new();
+    private bool _formValid;
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await WarehouseService.Create(_warehouse);
+            Snackbar.Add("Sklad byl úspěšně vytvořen", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při vytváření skladu: {ex.Message}", Severity.Error);
+        }
+    }
+}

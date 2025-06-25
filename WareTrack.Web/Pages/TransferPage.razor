@@ -1,0 +1,375 @@
+@page "/transfer"
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+@using Microsoft.AspNetCore.Components.Web
+
+@inject IInventoryItemService InventoryItemService
+@inject ILocationService LocationService
+@inject IWarehouseService WarehouseService
+@inject IShelfService ShelfService
+@inject ITransferService TransferService
+@inject ISnackbar Snackbar
+
+<PageTitle>Přesun zboží</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3">
+        <MudTabPanel Text="Přesun zboží" Icon="@Icons.Material.Filled.SwapHoriz">
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudStack Spacing="4">
+                    <MudText Typo="Typo.h6">Vybrat položku podle umístění</MudText>
+
+                    <MudSelect T="WarehouseDto" Label="Filtrovat podle skladu" @bind-Value="_sourceWarehouse"
+                               ToStringFunc="@(w => w?.Name ?? string.Empty)"
+                               FullWidth="true"
+                               @bind-Value:after="SourceWarehouseChanged">
+                        <MudSelectItem T="WarehouseDto" Value="@(null)">Všechny sklady</MudSelectItem>
+                        @foreach (WarehouseDto warehouse in _warehouses)
+                        {
+                            <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="ShelfDto" Label="Filtrovat podle regálu" @bind-Value="_sourceShelf"
+                               ToStringFunc="@(s => s?.Code ?? string.Empty)"
+                               FullWidth="true"
+                               Disabled="@(_sourceWarehouse == null)"
+                               @bind-Value:after="SourceShelfChanged">
+                        <MudSelectItem T="ShelfDto" Value="@(null)">Všechny regály</MudSelectItem>
+                        @foreach (ShelfDto shelf in _sourceAvailableShelves)
+                        {
+                            <MudSelectItem Value="@shelf">@shelf.Code</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudText Typo="Typo.h6" Class="mt-4">Položka k přesunu</MudText>
+
+                    <MudSelect T="InventoryItemDto" Label="Položka" @bind-Value="_selectedItem"
+                               Required="true" FullWidth="true"
+                               ToStringFunc="@(i => i?.Name ?? string.Empty)"
+                               @bind-Value:after="ItemSelected">
+                        @foreach (InventoryItemDto item in _filteredInventoryItems)
+                        {
+                            <MudSelectItem Value="@item">
+                                @item.Name (@item.Quantity ks) - @item.Location.Code
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudDivider/>
+
+                    <MudText Typo="Typo.h6">Cílová lokace</MudText>
+
+                    <MudSelect T="WarehouseDto" Label="Sklad" @bind-Value="_targetWarehouse"
+                               Required="true" FullWidth="true"
+                               ToStringFunc="@(w => w?.Name ?? string.Empty)"
+                               Disabled="@(_selectedItem == null)"
+                               @bind-Value:after="TargetWarehouseChanged">
+                        @foreach (WarehouseDto warehouse in _warehouses)
+                        {
+                            <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="ShelfDto" Label="Regál" @bind-Value="_targetShelf"
+                               Required="true" FullWidth="true"
+                               ToStringFunc="@(s => s?.Code ?? string.Empty)"
+                               Disabled="@(_targetWarehouse == null)"
+                               @bind-Value:after="TargetShelfChanged">
+                        @foreach (ShelfDto shelf in _targetAvailableShelves)
+                        {
+                            <MudSelectItem Value="@shelf">@shelf.Code</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="LocationDto" Label="Lokace" @bind-Value="_targetLocation"
+                               Required="true" FullWidth="true"
+                               ToStringFunc="@(l => l?.Code ?? string.Empty)"
+                               Disabled="@(_targetShelf == null)">
+                        @foreach (LocationDto location in _targetAvailableLocations)
+                        {
+                            <MudSelectItem Value="@location">@location.Code</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudDivider/>
+
+                    <MudNumericField T="int" Label="Množství" @bind-Value="_quantity"
+                                     Min="1" Max="@(_selectedItem?.Quantity ?? 0)"
+                                     Required="true" FullWidth="true"
+                                     Disabled="@(_selectedItem == null)"/>
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TransferItem"
+                               Disabled="@(!CanTransfer)" FullWidth="true" Class="mt-4">
+                        Přesunout
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Historie přesunů" Icon="@Icons.Material.Filled.History">
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudTable @ref="_table"
+                          ServerData="@(new Func<TableState, CancellationToken, Task<TableData<TransferDto>>>(ServerReload))"
+                          Dense="true" Hover="true" Bordered="false" Striped="true">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">Historie přesunů</MudText>
+                        <MudSpacer/>
+                        <MudTextField @bind-Value="_searchString" Placeholder="Hledat" Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"
+                                      Class="mt-0" Immediate="true"
+                                      @onkeyup="@(e => SearchKeyPressed(e))"/>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>Datum a čas</MudTh>
+                        <MudTh>Položka</MudTh>
+                        <MudTh>Z lokace</MudTh>
+                        <MudTh>Do lokace</MudTh>
+                        <MudTh>Množství</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd
+                            DataLabel="Datum a čas">@context.MovedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</MudTd>
+                        <MudTd DataLabel="Položka">@context.Item.Name</MudTd>
+                        <MudTd DataLabel="Z lokace">@GetLocationDisplay(context.SourceLocation)</MudTd>
+                        <MudTd DataLabel="Do lokace">@GetLocationDisplay(context.TargetLocation)</MudTd>
+                        <MudTd DataLabel="Množství">@context.Quantity ks</MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] {10, 25, 50, 100}"/>
+                    </PagerContent>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private List<InventoryItemDto> _inventoryItems = new();
+    private List<InventoryItemDto> _filteredInventoryItems = new();
+    private List<WarehouseDto> _warehouses = new();
+    private List<ShelfDto> _allShelves = new();
+    private List<TransferDto> _transfers = new();
+    private string _searchString = "";
+
+    // Source (item selection) filters
+    private WarehouseDto? _sourceWarehouse;
+    private ShelfDto? _sourceShelf;
+    private List<ShelfDto> _sourceAvailableShelves = new();
+
+    // Target (destination) selection
+    private WarehouseDto? _targetWarehouse;
+    private ShelfDto? _targetShelf;
+    private LocationDto? _targetLocation;
+    private List<ShelfDto> _targetAvailableShelves = new();
+    private List<LocationDto> _allLocations = new();
+    private List<LocationDto> _targetAvailableLocations = new();
+    private List<int> _occupiedLocationIds = new();
+
+    private InventoryItemDto? _selectedItem;
+    private int _quantity = 1;
+
+    private bool CanTransfer => _selectedItem != null
+                                && _targetLocation != null
+                                && _quantity > 0
+                                && _quantity <= _selectedItem.Quantity
+                                && (_selectedItem.Location.Id != _targetLocation.Id);
+
+    private MudTable<TransferDto>? _table;
+    private int _totalItems;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _inventoryItems = await InventoryItemService.GetNoZeroQuantitiesInventoryItems();
+        _filteredInventoryItems = _inventoryItems.ToList();
+
+        _warehouses = await WarehouseService.GetAll();
+        _allShelves = await ShelfService.GetAll();
+        _allLocations = await LocationService.GetAll();
+
+        // Get IDs of locations that already have items
+        var occupiedItems = _inventoryItems.Where(i => i.Location != null);
+        _occupiedLocationIds = occupiedItems.Where(i => i.Location is not null)
+            .Select(i => i.Location.Id)
+            .ToList();
+    }
+
+    private async Task<TableData<TransferDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        // TableState uses 0-based index, while our API uses 1-based
+        int page = state.Page + 1;
+        int pageSize = state.PageSize;
+
+        // Load data from server with pagination
+        _transfers = await TransferService.GetTransfers(page, pageSize, _searchString);
+        _totalItems = await TransferService.GetTransfersCount(_searchString);
+
+        return new TableData<TransferDto>
+        {
+            Items = _transfers,
+            TotalItems = _totalItems
+        };
+    }
+
+    private async Task SearchKeyPressed(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private string GetLocationDisplay(LocationDto location)
+    {
+        if (location == null) return "-";
+        return $"{location.Code} ({location.Shelf.Warehouse.Name})";
+    }
+
+    private Func<TransferDto, bool> QuickFilter => x =>
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+
+        string searchLower = _searchString.Trim().ToLower();
+
+        return x.Item.Name.ToLower().Contains(searchLower) ||
+               (x.SourceLocation.Code.ToLower().Contains(searchLower)) ||
+               (x.TargetLocation.Code.ToLower().Contains(searchLower)) ||
+               (x.SourceLocation.Shelf.Warehouse.Name.ToLower().Contains(searchLower)) ||
+               (x.TargetLocation.Shelf.Warehouse.Name.ToLower().Contains(searchLower));
+    };
+
+    private void SourceWarehouseChanged()
+    {
+        _sourceShelf = null;
+
+        if (_sourceWarehouse == null)
+        {
+            _sourceAvailableShelves = new List<ShelfDto>();
+            // Show all items when no warehouse is selected
+            _filteredInventoryItems = _inventoryItems.ToList();
+        }
+        else
+        {
+            // Filter shelves by selected source warehouse
+            _sourceAvailableShelves = _allShelves
+                .Where(s => s.Warehouse.Id == _sourceWarehouse.Id)
+                .ToList();
+
+            // Filter items by warehouse
+            _filteredInventoryItems = _inventoryItems
+                .Where(i => i.Location.Shelf.Warehouse.Id == _sourceWarehouse.Id)
+                .ToList();
+        }
+    }
+
+    private void SourceShelfChanged()
+    {
+        if (_sourceShelf == null)
+        {
+            // If no shelf selected but warehouse is selected, show all items in that warehouse
+            if (_sourceWarehouse != null)
+            {
+                _filteredInventoryItems = _inventoryItems
+                    .Where(i => i.Location.Shelf.Warehouse.Id == _sourceWarehouse.Id)
+                    .ToList();
+            }
+        }
+        else
+        {
+            // Filter items by shelf
+            _filteredInventoryItems = _inventoryItems
+                .Where(i => i.Location.Shelf.Id == _sourceShelf.Id)
+                .ToList();
+        }
+    }
+
+    private async Task ItemSelected()
+    {
+        _targetWarehouse = null;
+        _targetShelf = null;
+        _targetLocation = null;
+
+        if (_selectedItem != null)
+        {
+            InventoryItemDto? selected = await InventoryItemService.GetInventoryItemWithFullHierarchy(_selectedItem.Id);
+            _sourceWarehouse = selected?.Location.Shelf.Warehouse;
+            _sourceShelf = selected?.Location.Shelf;
+            _quantity = selected?.Quantity ?? 0;
+        }
+    }
+
+    private void TargetWarehouseChanged()
+    {
+        _targetShelf = null;
+        _targetLocation = null;
+
+        if (_targetWarehouse == null)
+        {
+            _targetAvailableShelves = new List<ShelfDto>();
+            return;
+        }
+
+        // Filter shelves by selected target warehouse
+        _targetAvailableShelves = _allShelves
+            .Where(s => s.Warehouse.Id == _targetWarehouse.Id)
+            .ToList();
+    }
+
+    private void TargetShelfChanged()
+    {
+        _targetLocation = null;
+
+        if (_targetShelf == null)
+        {
+            _targetAvailableLocations = new List<LocationDto>();
+            return;
+        }
+
+        // Filter locations by selected shelf and exclude occupied locations
+        // (except the current item's location)
+        _targetAvailableLocations = _allLocations
+            .Where(l => l.Shelf.Id == _targetShelf.Id &&
+                        (!_occupiedLocationIds.Contains(l.Id) ||
+                         (_selectedItem?.Location?.Id == l.Id)))
+            .Where(l => l.Id != _selectedItem?.Location?.Id)
+            .ToList();
+    }
+
+    private async Task TransferItem()
+    {
+        if (!CanTransfer || _selectedItem == null ||
+            _targetLocation == null || _quantity <= 0 ||
+            _quantity > _selectedItem.Quantity)
+        {
+            Snackbar.Add("Vyplňte všechna pole správně.", Severity.Error);
+            return;
+        }
+
+        bool success = await TransferService.TransferItem(
+            _selectedItem.Id,
+            _targetLocation.Id,
+            _quantity
+        );
+
+        if (success)
+        {
+            Snackbar.Add("Zboží bylo úspěšně přesunuto.", Severity.Success);
+
+            // Reset selections
+            _sourceWarehouse = null;
+            _sourceShelf = null;
+            _selectedItem = null;
+            _targetWarehouse = null;
+            _targetShelf = null;
+            _targetLocation = null;
+            _quantity = 1;
+
+            await OnInitializedAsync();
+        }
+        else
+        {
+            Snackbar.Add("Přesun zboží se nezdařil.", Severity.Error);
+        }
+    }
+
+}

@@ -1,0 +1,146 @@
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject ILocationService LocationService
+@inject IShelfService ShelfService
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string"
+                          Label="Kód lokace"
+                          @bind-Value="_location.Code"
+                          Required="true"
+                          RequiredError="Kód lokace je povinný"/>
+
+            <MudTextField T="string"
+                          Label="Popis"
+                          @bind-Value="_location.Description"
+                          AutoGrow="true"/>
+
+            <MudSelect T="WarehouseDto"
+                       Label="Sklad"
+                       @bind-Value="_selectedWarehouse"
+                       Required="true"
+                       RequiredError="Sklad je povinný"
+                       ToStringFunc="@(w => w?.Name ?? string.Empty)">
+                @foreach (var warehouse in _warehouses)
+                {
+                    <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ShelfDto"
+                       Label="Regál"
+                       @bind-Value="_selectedShelf"
+                       Required="true"
+                       RequiredError="Regál je povinný"
+                       Disabled="@(_selectedWarehouse == null)"
+                       ToStringFunc="@(s => s?.Code ?? string.Empty)">
+                @foreach (var shelf in _filteredShelves)
+                {
+                    <MudSelectItem Value="@shelf">@shelf.Code</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Uložit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter]
+    public LocationDto Location { get; set; } = new();
+
+    private MudForm? _form;
+    private LocationDto _location = new();
+    private List<WarehouseDto> _warehouses = new();
+    private List<ShelfDto> _allShelves = new();
+    private List<ShelfDto> _filteredShelves = new();
+    private WarehouseDto? _selectedWarehouse;
+    private ShelfDto? _selectedShelf;
+    private WarehouseDto? _previousWarehouse;
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await WarehouseService.GetAll();
+        _allShelves = await ShelfService.GetAll();
+
+        _location = new LocationDto
+        {
+            Id = Location.Id,
+            Code = Location.Code,
+            Description = Location.Description
+        };
+
+        // Initialize selected shelf from the location
+        _selectedShelf = _allShelves.FirstOrDefault(s => s.Id == Location.Shelf.Id);
+        _location.Shelf = _selectedShelf;
+
+        // Initialize warehouse from the shelf
+        _selectedWarehouse = _selectedShelf?.Warehouse;
+        
+        // Filter shelves based on selected warehouse
+        if (_selectedWarehouse != null)
+        {
+            _filteredShelves = _allShelves.Where(s => s.Warehouse.Id == _selectedWarehouse.Id).ToList();
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Handle warehouse changes to update available shelves
+        if (_selectedWarehouse != _previousWarehouse)
+        {
+            _previousWarehouse = _selectedWarehouse;
+            
+            if (_selectedWarehouse != null)
+            {
+                _filteredShelves = _allShelves.Where(s => s.Warehouse.Id == _selectedWarehouse.Id).ToList();
+                
+                // Clear selected shelf if it doesn't belong to the selected warehouse
+                if (_selectedShelf == null || !_filteredShelves.Contains(_selectedShelf))
+                {
+                    _selectedShelf = null;
+                }
+            }
+            else
+            {
+                _filteredShelves.Clear();
+                _selectedShelf = null;
+            }
+            
+            // Update location's shelf with the selected shelf
+            _location.Shelf = _selectedShelf;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            _location.Shelf = _selectedShelf;
+            await LocationService.Update(_location, _location.Id);
+            Snackbar.Add("Lokace byla úspěšně aktualizována", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při aktualizaci lokace: {ex.Message}", Severity.Error);
+        }
+    }
+}

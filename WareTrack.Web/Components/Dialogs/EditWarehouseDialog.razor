@@ -1,0 +1,67 @@
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string" 
+                          Label="Název skladu" 
+                          @bind-Value="_warehouse.Name"
+                          Required="true"
+                          RequiredError="Název skladu je povinný"/>
+            
+            <MudTextField T="string" 
+                          Label="Popis" 
+                          @bind-Value="_warehouse.Description"
+                          AutoGrow="true"/>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Uložit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter] 
+    public WarehouseDto Warehouse { get; set; } = new();
+
+    private MudForm? _form;
+    private WarehouseDto _warehouse = new();
+    private bool _formValid;
+
+    protected override void OnInitialized()
+    {
+        _warehouse = new WarehouseDto
+        {
+            Id = Warehouse.Id,
+            Name = Warehouse.Name,
+            Description = Warehouse.Description
+        };
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await WarehouseService.Update(_warehouse, _warehouse.Id);
+            Snackbar.Add("Sklad byl úspěšně aktualizován", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při aktualizaci skladu: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,103 @@
+﻿
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<MudPopoverProvider/>
+<MudThemeProvider/>
+<MudSnackbarProvider />
+<MudDialogProvider FullWidth="true"/>
+
+    <div class="layout-wrapper">
+        <MudLayout Class="layout-content">
+            <MudAppBar Color="Color.Primary" Elevation="1">
+                <MudText Typo="Typo.h6">@_currentPageTitle</MudText>
+            </MudAppBar>
+
+            <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Mini" Elevation="1">
+                <NavMenu/>
+            </MudDrawer>
+
+            <MudMainContent Class="main-content-wrapper">
+                <div class="main-content">
+                    @Body
+                </div>
+                <Footer></Footer>
+            </MudMainContent>
+        </MudLayout>
+    </div>
+
+
+<style>
+    .layout-wrapper {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .layout-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .main-content-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .main-content {
+        flex: 1;
+    }
+</style>
+
+@code {
+    private bool _drawerOpen = true;
+    private string _currentPageTitle = "WareTrack";
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await UpdatePageTitle();
+        StateHasChanged();
+    }
+
+    private async Task UpdatePageTitle()
+    {
+        try
+        {
+            string docTitle = await JSRuntime.InvokeAsync<string>("eval", "document.title");
+            _currentPageTitle = string.IsNullOrEmpty(docTitle) ? "WareTrack" : docTitle;
+        }
+        catch
+        {
+            // Fallback if JS call fails
+            _currentPageTitle = "WareTrack";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await UpdatePageTitle();
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+}

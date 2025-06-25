@@ -1,0 +1,72 @@
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IShelfService ShelfService
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string"
+                          Label="Kód regálu"
+                          @bind-Value="_shelf.Code"
+                          Required="true"
+                          RequiredError="Kód regálu je povinný"/>
+
+            <MudTextField T="string"
+                          Label="Popis"
+                          @bind-Value="_shelf.Description"
+                          AutoGrow="true"/>
+
+            <MudSelect T="WarehouseDto" 
+                       Label="Sklad" 
+                       @bind-Value="_shelf.Warehouse"
+                       Required="true"
+                       RequiredError="Sklad je povinný">
+                @foreach (WarehouseDto warehouse in _warehouses)
+                {
+                    <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Vytvořit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    private MudForm? _form;
+    private readonly ShelfDto _shelf = new();
+    private List<WarehouseDto> _warehouses = new();
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await WarehouseService.GetAll();
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await ShelfService.Create(_shelf);
+            Snackbar.Add("Regál byl úspěšně vytvořen", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při vytváření regálu: {ex.Message}", Severity.Error);
+        }
+    }
+}

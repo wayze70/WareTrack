@@ -1,0 +1,109 @@
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject ILocationService LocationService
+@inject IShelfService ShelfService
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string"
+                          Label="Kód lokace"
+                          @bind-Value="_location.Code"
+                          Required="true"
+                          RequiredError="Kód lokace je povinný"/>
+
+            <MudTextField T="string"
+                          Label="Popis"
+                          @bind-Value="_location.Description"
+                          AutoGrow="true"/>
+
+            <MudSelect T="WarehouseDto" 
+                       Label="Sklad" 
+                       @bind-Value="_selectedWarehouse"
+                       Required="true"
+                       RequiredError="Sklad je povinný">
+                @foreach (WarehouseDto warehouse in _warehouses)
+                {
+                    <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ShelfDto" 
+                       Label="Regál" 
+                       @bind-Value="_location.Shelf"
+                       Required="true"
+                       RequiredError="Regál je povinný"
+                       Disabled="@(_selectedWarehouse == null)">
+                @foreach (ShelfDto shelf in _filteredShelves)
+                {
+                    <MudSelectItem Value="@shelf">@shelf.Code</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Vytvořit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    private MudForm? _form;
+    private readonly LocationDto _location = new();
+    private List<WarehouseDto> _warehouses = new();
+    private List<ShelfDto> _allShelves = new();
+    private List<ShelfDto> _filteredShelves = new();
+    private WarehouseDto? _selectedWarehouse;
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await WarehouseService.GetAll();
+        _allShelves = await ShelfService.GetAll();
+    }
+
+    private WarehouseDto? _previousWarehouse;
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_selectedWarehouse != _previousWarehouse)
+        {
+            _previousWarehouse = _selectedWarehouse;
+            if (_selectedWarehouse != null)
+            {
+                _filteredShelves = _allShelves.Where(s => s.Warehouse?.Id == _selectedWarehouse.Id).ToList();
+            }
+            else
+            {
+                _filteredShelves.Clear();
+            }
+            _location.Shelf = null!;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await LocationService.Create(_location);
+            Snackbar.Add("Lokace byla úspěšně vytvořena", Severity.Success);
+            MudDialog?.Close(MudBlazor.DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při vytváření lokace: {ex.Message}", Severity.Error);
+        }
+    }
+}

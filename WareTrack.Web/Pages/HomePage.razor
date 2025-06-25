@@ -1,0 +1,60 @@
+@page "/"
+@using MudBlazor
+@using WareTrack.Web.Components.Layout
+@using Microsoft.AspNetCore.Components.Web
+@using WareTrack.Web.Services
+
+@inject DatabaseSeeder DatabaseSeeder
+
+<PageTitle>WareTrack</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+    <MudButton OnClick="DatabaseSeeder.SeedDatabase">
+        Naplnit databázi
+    </MudButton>
+    <MudText Typo="Typo.h4" Class="mb-6" Align="Align.Center">
+        Vítejte v systému správy skladů
+    </MudText>
+
+    <MudText Typo="Typo.body1" Class="mb-8" Align="Align.Center" Color="Color.Secondary">
+        Vyberte si z níže uvedených sekcí pro správu vašeho skladu
+    </MudText>
+
+    <MudGrid Spacing="4">
+        @foreach (NavMenu.MenuItemModel item in NavMenu.MenuItems.Where(x => x.Page != NavMenu.Page.Home))
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="mud-height-full hover-card" Style="cursor: pointer;" @onclick="@(() => NavigateToPage(item.Href))">
+                    <MudCardContent Class="text-center pa-6">
+                        <MudIcon Icon="@item.Icon" Size="Size.Large" Color="Color.Primary" Class="mb-4"/>
+                        <MudText Typo="Typo.h6" Class="mb-3">@item.Title</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @item.Description
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .hover-card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+
+    .hover-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+</style>
+
+@code {
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private void NavigateToPage(string url)
+    {
+        Navigation.NavigateTo(url);
+    }
+}

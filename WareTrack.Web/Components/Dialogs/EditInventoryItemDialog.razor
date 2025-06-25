@@ -1,0 +1,90 @@
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IInventoryItemService InventoryItemService
+@inject ILocationService LocationService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string" 
+                          Label="Název položky" 
+                          @bind-Value="_inventoryItem.Name"
+                          Required="true"
+                          RequiredError="Název položky je povinný"/>
+            
+            <MudTextField T="string" 
+                          Label="Popis" 
+                          @bind-Value="_inventoryItem.Description"
+                          AutoGrow="true"/>
+                          
+            <MudNumericField T="int"
+                            Label="Množství"
+                            @bind-Value="_inventoryItem.Quantity"
+                            Min="0"/>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Uložit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter] 
+    public InventoryItemDto InventoryItem { get; set; } = new();
+
+    private MudForm? _form;
+    private InventoryItemDto _inventoryItem = new();
+    private List<LocationDto> _availableLocations = new();
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _inventoryItem = new InventoryItemDto
+        {
+            Id = InventoryItem.Id,
+            Name = InventoryItem.Name,
+            Description = InventoryItem.Description,
+            Quantity = InventoryItem.Quantity,
+            Location = InventoryItem.Location
+        };
+        
+        var locations = await LocationService.GetAll();
+        var assignedItems = await InventoryItemService.GetInventoryItemsWithLocation();
+        var occupiedLocationIds = assignedItems
+            .Where(i => i.Location != null && i.Id != _inventoryItem.Id)
+            .Select(i => i.Location?.Id)
+            .ToList();
+        
+        _availableLocations = locations.Where(l => !occupiedLocationIds.Contains(l.Id)).ToList();
+        
+        if (_inventoryItem.Location != null && _availableLocations.All(l => l.Id != _inventoryItem.Location.Id))
+        {
+            _availableLocations.Add(_inventoryItem.Location);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await InventoryItemService.Update(_inventoryItem, _inventoryItem.Id);
+            Snackbar.Add("Položka byla úspěšně aktualizována", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při aktualizaci položky: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,148 @@
+@page "/warehouses"
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+@using Microsoft.AspNetCore.Components.Web
+@using WareTrack.Web.Components.Dialogs
+
+@inject IWarehouseService WarehouseService
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Seznam skladů</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNewWarehouse">Nový sklad</MudButton>
+    </MudStack>
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3">
+        <MudTabPanel Text="Sklady" Icon="@Icons.Material.Filled.Warehouse">
+            <MudStack Row="true" Class="mb-4">
+                <MudTextField @bind-Value="_searchText" Label="Hledat" Adornment="Adornment.Start"
+                            AdornmentIcon="@Icons.Material.Filled.Search" OnKeyUp="SearchKeyUp" />
+                <MudButton Variant="Variant.Outlined" OnClick="ClearSearch"
+                          Class="ml-2 align-self-end mb-1">Zrušit</MudButton>
+            </MudStack>
+
+            <MudTable Items="_filteredWarehouses" Hover="true" Striped="true"
+                     Loading="@_isLoading" LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Název</MudTh>
+                    <MudTh>Popis</MudTh>
+                    <MudTh>Počet regálů</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Název">@context.Name</MudTd>
+                    <MudTd DataLabel="Popis">@context.Description</MudTd>
+                    <MudTd DataLabel="Počet regálů">
+                        <MudBadge Content="@(context.Shelves?.Count ?? 0)" Color="Color.Primary" Overlap="true" Class="mx-2">
+                            <MudIconButton Icon="@Icons.Material.Outlined.ViewModule"
+                                         Size="Size.Small"
+                                         OnClick="@(() => NavigateToShelves(context))" />
+                        </MudBadge>
+                    </MudTd>
+                    <MudTd>
+                        <MudStack Row="true" Spacing="0">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                         Size="Size.Small" OnClick="@(() => EditWarehouse(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                         Size="Size.Small" OnClick="@(() => DeleteWarehouse(context))" />
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private List<WarehouseDto> _warehouses = new();
+    private List<WarehouseDto> _filteredWarehouses = new();
+    private string _searchText = string.Empty;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+        await FetchWarehouses();
+        _isLoading = false;
+    }
+
+    private async Task FetchWarehouses()
+    {
+        _warehouses = await WarehouseService.GetWarehousesWithShelves();
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredWarehouses = _warehouses;
+        
+        // Apply text search
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            string searchTerm = _searchText.ToLower();
+            _filteredWarehouses = _filteredWarehouses
+                .Where(w => (w.Name.ToLower().Contains(searchTerm)) || 
+                           (w.Description?.ToLower().Contains(searchTerm) ?? false))
+                .ToList();
+        }
+    }
+
+    private void SearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            ApplyFilters();
+    }
+
+    private void ClearSearch()
+    {
+        _searchText = string.Empty;
+        ApplyFilters();
+    }
+
+    private void NavigateToShelves(WarehouseDto warehouse)
+    {
+        NavigationManager.NavigateTo($"/shelves?warehouseId={warehouse.Id}");
+    }
+
+    async Task OpenNewWarehouse()
+    {
+        IDialogReference dialog = await DialogService.ShowAsync<NewWarehouseDialog>("Nový sklad");
+        DialogResult? result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            await FetchWarehouses();
+        }
+    }
+
+    private async Task EditWarehouse(WarehouseDto w)
+    {
+        var parameters = new DialogParameters<EditWarehouseDialog>
+        {
+            { x => x.Warehouse, w }
+        };
+        
+        IDialogReference dialog = await DialogService.ShowAsync<EditWarehouseDialog>("Upravit sklad", parameters);
+        DialogResult? result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            await FetchWarehouses();
+        }
+    }
+    
+    private async Task DeleteWarehouse(WarehouseDto w)
+    {
+        bool? ok = await DialogService.ShowMessageBox(
+            "Smazat sklad",
+            $"Opravdu chcete smazat sklad \"{w.Name}\"?",
+            yesText: "Ano", noText: "Ne");
+        if (ok == true)
+        {
+            await WarehouseService.Delete(w.Id);
+            await FetchWarehouses();
+        }
+    }
+}

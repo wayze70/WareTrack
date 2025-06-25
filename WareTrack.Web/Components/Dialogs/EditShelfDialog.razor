@@ -1,0 +1,85 @@
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IShelfService ShelfService
+@inject IWarehouseService WarehouseService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string" 
+                          Label="Kód regálu" 
+                          @bind-Value="_shelf.Code"
+                          Required="true"
+                          RequiredError="Kód regálu je povinný"/>
+            
+            <MudTextField T="string" 
+                          Label="Popis" 
+                          @bind-Value="_shelf.Description"
+                          AutoGrow="true"/>
+
+            <MudSelect T="WarehouseDto" 
+                       Label="Sklad" 
+                       @bind-Value="_shelf.Warehouse"
+                       Required="true"
+                       RequiredError="Sklad je povinný"
+                       ToStringFunc="@(w => w?.Name ?? string.Empty)">
+                @foreach (WarehouseDto warehouse in _warehouses)
+                {
+                    <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Uložit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter] 
+    public ShelfDto Shelf { get; set; } = new();
+
+    private MudForm? _form;
+    private ShelfDto _shelf = new();
+    private List<WarehouseDto> _warehouses = new();
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await WarehouseService.GetAll();
+        
+        _shelf = new ShelfDto
+        {
+            Id = Shelf.Id,
+            Code = Shelf.Code,
+            Description = Shelf.Description,
+            Warehouse = Shelf.Warehouse
+        };
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            await ShelfService.Update(_shelf, _shelf.Id);
+            Snackbar.Add("Regál byl úspěšně aktualizován", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při aktualizaci regálu: {ex.Message}", Severity.Error);
+        }
+    }
+}

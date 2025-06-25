@@ -1,0 +1,155 @@
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+
+@inject IInventoryItemService InventoryItemService
+@inject ILocationService LocationService
+@inject IWarehouseService WarehouseService
+@inject IShelfService ShelfService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" ValidationDelay="0" @bind-IsValid="_formValid">
+            <MudTextField T="string"
+                          Label="Název položky"
+                          @bind-Value="_inventoryItem.Name"
+                          Required="true"
+                          RequiredError="Název položky je povinný"/>
+
+            <MudTextField T="string"
+                          Label="Popis"
+                          @bind-Value="_inventoryItem.Description"
+                          AutoGrow="true"/>
+                          
+            <MudNumericField T="int"
+                            Label="Množství"
+                            @bind-Value="_inventoryItem.Quantity"
+                            Min="0"/>
+            
+            <MudSelect T="WarehouseDto" 
+                       Label="Sklad" 
+                       @bind-Value="_selectedWarehouse" 
+                       ToStringFunc="@(w => w?.Name ?? string.Empty)"
+                       @bind-Value:after="WarehouseChanged">
+                <MudSelectItem T="WarehouseDto" Value="@(null)">Vyberte sklad</MudSelectItem>
+                @foreach (WarehouseDto warehouse in _warehouses)
+                {
+                    <MudSelectItem Value="@warehouse">@warehouse.Name</MudSelectItem>
+                }
+            </MudSelect>
+            
+            <MudSelect T="ShelfDto" 
+                       Label="Regál" 
+                       @bind-Value="_selectedShelf"
+                       ToStringFunc="@(s => s?.Code ?? string.Empty)"
+                       Disabled="@(_selectedWarehouse == null)"
+                       @bind-Value:after="ShelfChanged">
+                <MudSelectItem T="ShelfDto" Value="@(null)">Vyberte regál</MudSelectItem>
+                @foreach (ShelfDto shelf in _availableShelves)
+                {
+                    <MudSelectItem Value="@shelf">@shelf.Code</MudSelectItem>
+                }
+            </MudSelect>
+                            
+            <MudSelect T="LocationDto" 
+                       Label="Lokace" 
+                       @bind-Value="_selectedLocation"
+                       ToStringFunc="@(l => l?.Code ?? string.Empty)"
+                       Disabled="@(_selectedShelf == null)">
+                <MudSelectItem T="LocationDto" Value="@(null)">Bez lokace</MudSelectItem>
+                @foreach (LocationDto location in _availableLocations)
+                {
+                    <MudSelectItem Value="@location">@location.Code</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Zrušit</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" Disabled="!_formValid">Vytvořit</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    IMudDialogInstance? MudDialog { get; set; }
+
+    private MudForm? _form;
+    private readonly InventoryItemDto _inventoryItem = new();
+    private WarehouseDto? _selectedWarehouse;
+    private ShelfDto? _selectedShelf;
+    private LocationDto? _selectedLocation;
+    private List<WarehouseDto> _warehouses = new();
+    private List<ShelfDto> _allShelves = new();
+    private List<ShelfDto> _availableShelves = new();
+    private List<LocationDto> _allLocations = new();
+    private List<LocationDto> _availableLocations = new();
+    private List<int> _occupiedLocationIds = new();
+    private bool _formValid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await WarehouseService.GetAll();
+        _allShelves = await ShelfService.GetAll();
+        _allLocations = await LocationService.GetAll();
+        
+        var assignedItems = await InventoryItemService.GetInventoryItemsWithLocation();
+        _occupiedLocationIds = assignedItems
+            .Where(i => i.Location != null)
+            .Select(i => i.Location.Id)
+            .ToList();
+    }
+
+    private void WarehouseChanged()
+    {
+        _selectedShelf = null;
+        _selectedLocation = null;
+        
+        if (_selectedWarehouse == null)
+        {
+            _availableShelves = new List<ShelfDto>();
+            _availableLocations = new List<LocationDto>();
+            return;
+        }
+        
+        _availableShelves = _allShelves
+            .Where(s => s.Warehouse.Id == _selectedWarehouse.Id)
+            .ToList();
+    }
+    
+    private void ShelfChanged()
+    {
+        _selectedLocation = null;
+        
+        if (_selectedShelf == null)
+        {
+            _availableLocations = new List<LocationDto>();
+            return;
+        }
+        
+        _availableLocations = _allLocations
+            .Where(l => l.Shelf.Id == _selectedShelf.Id && !_occupiedLocationIds.Contains(l.Id))
+            .ToList();
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Cancel();
+    }
+
+    private async Task Submit()
+    {
+        try
+        {
+            _inventoryItem.Location = _selectedLocation;
+            await InventoryItemService.Create(_inventoryItem);
+            Snackbar.Add("Položka byla úspěšně vytvořena", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Chyba při vytváření položky: {ex.Message}", Severity.Error);
+        }
+    }
+}

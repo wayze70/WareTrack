@@ -1,0 +1,81 @@
+﻿<MudNavMenu>
+    @foreach (MenuItemModel item in MenuItems)
+    {
+        <MudNavLink Href="@item.Href" Icon="@item.Icon" Match="@GetNavLinkMatch(item.Href)">@item.Title</MudNavLink>
+    }
+</MudNavMenu>
+
+@code {
+    private static NavLinkMatch GetNavLinkMatch(string href) => href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix;
+
+    public static readonly List<MenuItemModel> MenuItems = new()
+    {
+        new MenuItemModel
+        {
+            Page = Page.Home,
+            Title = "Domů",
+            Href = "/",
+            Icon = Icons.Material.Filled.Home,
+            Description = "Přehled hlavních funkcí systému správy skladů"
+        },
+        new MenuItemModel
+        {
+            Page = Page.Warehouses,
+            Title = "Sklady",
+            Href = "/warehouses",
+            Icon = Icons.Material.Filled.Warehouse,
+            Description = "Správa skladových prostor a jejich konfigurace. Přidávejte, upravujte a organizujte vaše sklady."
+        },
+        new MenuItemModel
+        {
+            Page = Page.Shelves,
+            Title = "Regály",
+            Href = "/shelves",
+            Icon = Icons.Material.Outlined.ViewModule,
+            Description = "Organizace regálů ve skladech. Nastavujte strukturu a rozložení regálových systémů."
+        },
+        new MenuItemModel
+        {
+            Page = Page.Locations,
+            Title = "Lokace",
+            Href = "/locations",
+            Icon = Icons.Material.Filled.Inventory2,
+            Description = "Definice konkrétních míst pro uložení zboží. Spravujte pozice a přístupnost lokací."
+        },
+        new MenuItemModel
+        {
+            Page = Page.Items,
+            Title = "Zboží",
+            Href = "/items",
+            Icon = Icons.Material.Filled.LocalOffer,
+            Description = "Katalog všech produktů a materiálů. Přidávejte nové položky a spravujte jejich vlastnosti."
+        },
+        new MenuItemModel
+        {
+            Page = Page.Transfers,
+            Title = "Přesuny",
+            Href = "/transfer",
+            Icon = Icons.Material.Filled.SwapHoriz,
+            Description = "Sledování pohybu zboží mezi lokacemi. Historie přesunů a aktuální stav skladových zásob."
+        }
+    };
+
+    public class MenuItemModel
+    {
+        public Page Page { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Href { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+    
+    public enum Page
+    {
+        Home,
+        Warehouses,
+        Shelves,
+        Locations,
+        Items,
+        Transfers
+    }
+}

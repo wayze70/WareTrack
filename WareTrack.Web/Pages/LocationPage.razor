@@ -1,0 +1,442 @@
+@page "/locations"
+@using MudBlazor
+@using WareTrack.Web.Dtos
+@using WareTrack.Web.Services
+@using Microsoft.AspNetCore.Components.Web
+@using WareTrack.Web.Components.Dialogs
+
+@inject ILocationService LocationService
+@inject IShelfService ShelfService
+@inject IWarehouseService WarehouseService
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject FilterStateService FilterState
+
+<PageTitle>Seznam lokací</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNewLocation">Nová lokace</MudButton>
+    </MudStack>
+
+    @if (_selectedWarehouseId.HasValue || _selectedShelfId.HasValue || _locationStatus.HasValue)
+    {
+        <MudPaper Class="pa-3 mb-4" Elevation="0">
+            <MudStack Row="true" Spacing="2">
+                @if (_selectedWarehouseId.HasValue)
+                {
+                    <MudChip T="bool" Color="Color.Primary" Size="Size.Small" OnClose="() => ClearWarehouseFilter()">
+                        Sklad: @(_warehouses.FirstOrDefault(w => w.Id == _selectedWarehouseId)?.Name ?? "")
+                    </MudChip>
+                }
+                @if (_selectedShelfId.HasValue)
+                {
+                    <MudChip T="bool" Color="Color.Secondary" Size="Size.Small" OnClose="() => ClearShelfFilter()">
+                        Regál: @(_availableShelves.FirstOrDefault(s => s.Id == _selectedShelfId)?.Code ?? "")
+                    </MudChip>
+                }
+                @if (_locationStatus.HasValue)
+                {
+                    <MudChip T="bool" Color="@(_locationStatus == LocationStatusType.Empty ? Color.Success : Color.Error)" 
+                            Size="Size.Small" OnClose="() => ClearStatusFilter()">
+                        Status: @(_locationStatus == LocationStatusType.Empty ? "Volné" : "Obsazené")
+                    </MudChip>
+                }
+                <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                          OnClick="ClearAllFilters" StartIcon="@Icons.Material.Filled.Clear">
+                    Zrušit filtry
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3">
+        <MudTabPanel Text="Lokace" Icon="@Icons.Material.Filled.Inventory2">
+            <MudStack Row="true" Class="mb-4">
+                <MudTextField @bind-Value="_searchText" Label="Hledat" Adornment="Adornment.Start"
+                            AdornmentIcon="@Icons.Material.Filled.Search" OnKeyUp="SearchKeyUp" />
+                <MudButton Variant="Variant.Outlined" OnClick="ClearSearch"
+                          Class="ml-2 align-self-end mb-1">Zrušit</MudButton>
+            </MudStack>
+
+            <MudTable Items="_filteredLocations" Hover="true" Striped="true"
+                     Loading="@_isLoading" LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Kód</MudTh>
+                    <MudTh>Popis</MudTh>
+                    <MudTh>Regál</MudTh>
+                    <MudTh>Sklad</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Položka</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Kód">@context.Code</MudTd>
+                    <MudTd DataLabel="Popis">@context.Description</MudTd>
+                    <MudTd DataLabel="Regál">
+                        <MudLink OnClick="@(() => SelectShelf(context.Shelf.Id))">
+                            @context.Shelf.Code
+                        </MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="Sklad">
+                        <MudLink OnClick="@(() => SelectWarehouse(context.Shelf.Warehouse.Id))">
+                            @context.Shelf.Warehouse.Name
+                        </MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        @if (context.Item != null)
+                        {
+                            <MudChip T="bool" Color="Color.Error" Size="Size.Small">Obsazeno</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="bool" Color="Color.Success" Size="Size.Small">Volné</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Položka">
+                        @if (context.Item != null)
+                        {
+                            <MudLink OnClick="@(() => NavigateToItems(context.Id))">
+                                @context.Item.Name
+                            </MudLink>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudStack Row="true" Spacing="0">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                         Size="Size.Small" OnClick="@(() => EditLocation(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                         Size="Size.Small" OnClick="@(() => DeleteLocation(context))" />
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Filtry" Icon="@Icons.Material.Filled.FilterAlt">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-4" Elevation="0">
+                        <MudText Typo="Typo.subtitle1" Class="mb-4">Umístění</MudText>
+                        <MudSelect T="int?" Label="Sklad" FullWidth="true"
+                                  @bind-Value="SelectedWarehouseId">
+                            <MudSelectItem T="int?" Value="@((int?)null)">Všechny sklady</MudSelectItem>
+                            @foreach (WarehouseDto warehouse in _warehouses)
+                            {
+                                <MudSelectItem T="int?" Value="@warehouse.Id">@warehouse.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudSelect T="int?" Label="Regál" FullWidth="true" Class="mt-3"
+                                  @bind-Value="SelectedShelfId">
+                            <MudSelectItem T="int?" Value="@((int?)null)">Všechny regály</MudSelectItem>
+                            @foreach (ShelfDto shelf in _availableShelves)
+                            {
+                                <MudSelectItem T="int?" Value="@shelf.Id">@shelf.Code</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-4" Elevation="0">
+                        <MudText Typo="Typo.subtitle1" Class="mb-4">Status</MudText>
+                        <MudSelect T="LocationStatusType?" Label="Status" FullWidth="true"
+                                  @bind-Value="LocationStatus">
+                            <MudSelectItem T="LocationStatusType?" Value="@((LocationStatusType?)null)">Všechny</MudSelectItem>
+                            <MudSelectItem T="LocationStatusType?" Value="@(LocationStatusType.Empty)">Volné</MudSelectItem>
+                            <MudSelectItem T="LocationStatusType?" Value="@(LocationStatusType.Occupied)">Obsazené</MudSelectItem>
+                        </MudSelect>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    public enum LocationStatusType
+    {
+        Empty,
+        Occupied
+    }
+
+    private List<LocationDto> _locations = new();
+    private List<LocationDto> _filteredLocations = new();
+    private List<WarehouseDto> _warehouses = new();
+    private List<ShelfDto> _allShelves = new();
+    private List<ShelfDto> _availableShelves = new();
+    private string _searchText = string.Empty;
+    private int? _selectedShelfId;
+    private int? _selectedWarehouseId;
+    private LocationStatusType? _locationStatus;
+    private bool _isLoading;
+    
+    public int? SelectedWarehouseId
+    {
+        get => _selectedWarehouseId;
+        set
+        {
+            if (_selectedWarehouseId != value)
+            {
+                _selectedWarehouseId = value;
+                FilterState.SelectedWarehouseId = value;
+                WarehouseChanged();
+            }
+        }
+    }
+    
+    public LocationStatusType? LocationStatus
+    {
+        get => _locationStatus;
+        set
+        {
+            if (_locationStatus != value)
+            {
+                _locationStatus = value;
+                FilterState.LocationStatus = value;
+                ApplyFilters();
+            }
+        }
+    }
+    
+    public int? SelectedShelfId
+    {
+        get => _selectedShelfId;
+        set
+        {
+            if (_selectedShelfId != value)
+            {
+                _selectedShelfId = value;
+                FilterState.SelectedShelfId = value;
+                ApplyFilters();
+            }
+        }
+    }
+
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public int? ShelfId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+    
+        _selectedWarehouseId = FilterState.SelectedWarehouseId;
+        _selectedShelfId = FilterState.SelectedShelfId;
+        _locationStatus = FilterState.LocationStatus;
+    
+        _warehouses = await WarehouseService.GetAll();
+        _allShelves = await ShelfService.GetAll();
+        _availableShelves = _allShelves;
+
+        if (ShelfId.HasValue)
+        {
+            _selectedShelfId = ShelfId;
+            FilterState.SelectedShelfId = ShelfId;
+            ShelfDto? shelf = _allShelves.FirstOrDefault(s => s.Id == ShelfId);
+            if (shelf?.Warehouse != null)
+            {
+                _selectedWarehouseId = shelf.Warehouse.Id;
+                FilterState.SelectedWarehouseId = shelf.Warehouse.Id;
+                WarehouseChanged();
+            }
+        }
+        else if (_selectedWarehouseId.HasValue)
+        {
+            WarehouseChanged();
+        }
+
+        await FetchLocations();
+        _isLoading = false;
+    }
+
+    private async Task FetchLocations()
+    {
+        _locations = await LocationService.GetLocationsWithItems();
+        ApplyFilters();
+    }
+
+    private void WarehouseChanged()
+    {
+        if (_selectedWarehouseId.HasValue)
+        {
+            _availableShelves = _allShelves
+                .Where(s => s.Warehouse.Id == _selectedWarehouseId.Value)
+                .ToList();
+
+            if (_selectedShelfId.HasValue && _availableShelves.All(s => s.Id != _selectedShelfId.Value))
+            {
+                _selectedShelfId = null;
+            }
+        }
+        else
+        {
+            _availableShelves = _allShelves;
+        }
+
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredLocations = _locations;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            string searchTerm = _searchText.ToLower();
+            _filteredLocations = _filteredLocations
+                .Where(l => (l.Code.ToLower().Contains(searchTerm)) ||
+                            (l.Description?.ToLower().Contains(searchTerm) ?? false))
+                .ToList();
+        }
+
+        if (_selectedWarehouseId.HasValue)
+        {
+            _filteredLocations = _filteredLocations
+                .Where(l => l.Shelf.Warehouse.Id == _selectedWarehouseId.Value)
+                .ToList();
+        }
+
+        if (_selectedShelfId.HasValue)
+        {
+            _filteredLocations = _filteredLocations
+                .Where(l => l.Shelf.Id == _selectedShelfId.Value)
+                .ToList();
+        }
+
+        if (_locationStatus.HasValue)
+        {
+            bool isOccupied = _locationStatus.Value == LocationStatusType.Occupied;
+            _filteredLocations = _filteredLocations
+                .Where(l => (l.Item != null) == isOccupied)
+                .ToList();
+        }
+    }
+
+    private void SearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            ApplyFilters();
+    }
+
+    private void ClearSearch()
+    {
+        _searchText = string.Empty;
+        ApplyFilters();
+    }
+
+    private void ClearWarehouseFilter()
+    {
+        _selectedWarehouseId = null;
+        _selectedShelfId = null;
+        FilterState.SelectedWarehouseId = null;
+        FilterState.SelectedShelfId = null;
+        ApplyFilters();
+    }
+
+    private void ClearShelfFilter()
+    {
+        _selectedShelfId = null;
+        FilterState.SelectedShelfId = null;
+        ApplyFilters();
+    }
+
+    private void ClearStatusFilter()
+    {
+        _locationStatus = null;
+        FilterState.LocationStatus = null;
+        ApplyFilters();
+    }
+
+    private void ClearAllFilters()
+    {
+        _searchText = string.Empty;
+        _selectedWarehouseId = null;
+        _selectedShelfId = null;
+        _locationStatus = null;
+    
+        FilterState.SelectedWarehouseId = null;
+        FilterState.SelectedShelfId = null;
+        FilterState.LocationStatus = null;
+    
+        ApplyFilters();
+    }
+
+    private void NavigateToItems(int id)
+    {
+        NavigationManager.NavigateTo($"/items?locationId={id}");
+    }
+
+    private void SelectShelf(int? shelfId)
+    {
+        if (shelfId.HasValue)
+        {
+            _selectedShelfId = shelfId;
+            FilterState.SelectedShelfId = shelfId;
+            ShelfDto? shelf = _allShelves.FirstOrDefault(s => s.Id == shelfId);
+            if (shelf?.Warehouse != null)
+            {
+                _selectedWarehouseId = shelf.Warehouse.Id;
+                FilterState.SelectedWarehouseId = shelf.Warehouse.Id;
+            }
+
+            ApplyFilters();
+        }
+    }
+
+    private void SelectWarehouse(int? warehouseId)
+    {
+        if (warehouseId.HasValue)
+        {
+            _selectedWarehouseId = warehouseId;
+            FilterState.SelectedWarehouseId = warehouseId;
+            _selectedShelfId = null; // Reset shelf selection
+            FilterState.SelectedShelfId = null;
+            WarehouseChanged();
+        }
+    }
+
+    async Task OpenNewLocation()
+    {
+        IDialogReference dialog = await DialogService.ShowAsync<NewLocationDialog>("Nová lokace");
+        DialogResult? result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await FetchLocations();
+        }
+    }
+
+    private async Task EditLocation(LocationDto location)
+    {
+        var parameters = new DialogParameters<EditLocationDialog>
+        {
+            { x => x.Location, location }
+        };
+
+        IDialogReference dialog = await DialogService.ShowAsync<EditLocationDialog>("Upravit lokaci", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await FetchLocations();
+        }
+    }
+
+    private async Task DeleteLocation(LocationDto location)
+    {
+        bool? ok = await DialogService.ShowMessageBox(
+            "Smazat lokaci",
+            $"Opravdu chcete smazat lokaci \"{location.Code}\"?",
+            yesText: "Ano", noText: "Ne");
+        if (ok == true)
+        {
+            await LocationService.Delete(location.Id);
+            await FetchLocations();
+        }
+    }
+}
