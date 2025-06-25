@@ -78,7 +78,12 @@
     {
         try
         {
-            await InventoryItemService.Update(_inventoryItem, _inventoryItem.Id);
+            bool result = await InventoryItemService.Update(_inventoryItem, _inventoryItem.Id);
+            if (!result)
+            {
+                Snackbar.Add("Chyba při aktualizaci položky", Severity.Error);
+                return;
+            }
             Snackbar.Add("Položka byla úspěšně aktualizována", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

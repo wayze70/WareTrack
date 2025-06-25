@@ -143,7 +143,12 @@
         try
         {
             _inventoryItem.Location = _selectedLocation;
-            await InventoryItemService.Create(_inventoryItem);
+            bool result = await InventoryItemService.Create(_inventoryItem);
+            if (!result)
+            {
+                Snackbar.Add("Položku se nepodařilo vytvořit", Severity.Error);
+                return;
+            }
             Snackbar.Add("Položka byla úspěšně vytvořena", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

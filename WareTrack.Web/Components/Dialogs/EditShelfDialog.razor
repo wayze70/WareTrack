@@ -73,7 +73,12 @@
     {
         try
         {
-            await ShelfService.Update(_shelf, _shelf.Id);
+            bool result = await ShelfService.Update(_shelf, _shelf.Id);
+            if (!result)
+            {
+                Snackbar.Add("Chyba při aktualizaci regálu", Severity.Error);
+                return;
+            }
             Snackbar.Add("Regál byl úspěšně aktualizován", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

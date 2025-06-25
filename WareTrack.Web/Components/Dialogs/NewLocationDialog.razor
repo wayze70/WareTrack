@@ -97,7 +97,12 @@
     {
         try
         {
-            await LocationService.Create(_location);
+            bool result = await LocationService.Create(_location);
+            if (!result)
+            {
+                Snackbar.Add("Lokaci se nepodařilo vytvořit", Severity.Error);
+                return;
+            }
             Snackbar.Add("Lokace byla úspěšně vytvořena", Severity.Success);
             MudDialog?.Close(MudBlazor.DialogResult.Ok(true));
         }

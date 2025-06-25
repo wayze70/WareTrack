@@ -134,7 +134,12 @@
         try
         {
             _location.Shelf = _selectedShelf;
-            await LocationService.Update(_location, _location.Id);
+            bool result = await LocationService.Update(_location, _location.Id);
+            if (!result)
+            {
+                Snackbar.Add("Chyba při aktualizaci lokace", Severity.Error);
+                return;
+            }
             Snackbar.Add("Lokace byla úspěšně aktualizována", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

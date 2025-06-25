@@ -55,7 +55,12 @@
     {
         try
         {
-            await WarehouseService.Update(_warehouse, _warehouse.Id);
+            bool result = await WarehouseService.Update(_warehouse, _warehouse.Id);
+            if (!result)
+            {
+                Snackbar.Add("Sklad se nepodařilo aktualizovat", Severity.Error);
+                return;
+            }
             Snackbar.Add("Sklad byl úspěšně aktualizován", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

@@ -60,7 +60,12 @@
     {
         try
         {
-            await ShelfService.Create(_shelf);
+            bool result = await ShelfService.Create(_shelf);
+            if (!result)
+            {
+                Snackbar.Add("Regál se nepodařilo vytvořit", Severity.Error);
+                return;
+            }
             Snackbar.Add("Regál byl úspěšně vytvořen", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

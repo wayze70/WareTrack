@@ -42,7 +42,12 @@
     {
         try
         {
-            await WarehouseService.Create(_warehouse);
+            bool result = await WarehouseService.Create(_warehouse);
+            if (!result)
+            {
+                Snackbar.Add("Sklad se nepodařilo vytvořit", Severity.Error);
+                return;
+            }
             Snackbar.Add("Sklad byl úspěšně vytvořen", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }
